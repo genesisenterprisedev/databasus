@@ -120,6 +120,11 @@ func detectVersion(ctx context.Context, conn *pgx.Conn) (pgshared.Version, error
 	}
 
 	switch majorVersion := matches[1]; majorVersion {
+	// genesisenterprisedev fork: legacy servers 9.x/10/11 are dumped with the oldest bundled
+	// client (pg_dump 12). A newer pg_dump reading an older server is officially supported,
+	// so logical backups of 9.6+ work unchanged. Restore targets use PG 12+.
+	case "9", "10", "11":
+		return pgshared.Version12, nil
 	case "12", "13", "14", "15", "16", "17", "18":
 		return pgshared.Version(majorVersion), nil
 	default:

@@ -20,6 +20,11 @@ type Source struct {
 	settings Settings
 	// generateUsername is a seam: a test makes the generated name collide with an existing role.
 	generateUsername func() string
+	// genesisenterprisedev fork: caches the source database's server_encoding so client tools run
+	// with the same client encoding as the server. SQL_ASCII and LATIN1 databases store raw bytes
+	// (e.g. 0xE9 for 'é') that a UTF8-only client makes the server reject while reading catalogs
+	// such as pg_description.
+	serverEncoding string
 }
 
 func NewSource(settings Settings) *Source {
@@ -86,6 +91,36 @@ func (s *Source) DetectVersion(ctx context.Context, logger *slog.Logger) (pgshar
 	defer closeConn(ctx, conn, logger)
 
 	return detectVersion(ctx, conn)
+}
+
+// DetectServerEncoding returns the source database's server_encoding and caches it on the source.
+// Client tools must speak the server's encoding: with PGCLIENTENCODING=UTF8 against a SQL_ASCII or
+// LATIN1 database, the server validates on output and aborts the dump at the first raw byte.
+func (s *Source) DetectServerEncoding(ctx context.Context, logger *slog.Logger) string {
+	if s.serverEncoding != "" {
+		return s.serverEncoding
+	}
+
+	conn, err := s.connect(ctx, s.settings.Database)
+	if err != nil {
+		logger.WarnContext(ctx, "could not connect to detect the server encoding; client tools fall back to UTF8",
+			slog.Any("error", err))
+		return "UTF8"
+	}
+	defer closeConn(ctx, conn, logger)
+
+	var encoding string
+	if err := conn.QueryRow(ctx, "SELECT current_setting('server_encoding')").Scan(&encoding); err != nil {
+		logger.WarnContext(ctx, "could not read the server encoding; client tools fall back to UTF8",
+			slog.Any("error", err))
+		return "UTF8"
+	}
+
+	if encoding == "" {
+		encoding = "UTF8"
+	}
+	s.serverEncoding = encoding
+	return s.serverEncoding
 }
 
 // connect writes the credential files, opens a pgx connection to databaseName and removes the files

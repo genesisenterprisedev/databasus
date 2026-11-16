@@ -30,6 +30,10 @@ func (s *Source) Dump(ctx context.Context, spec DumpSpec, output io.Writer) erro
 		return ErrDumpDatabaseNameRequired
 	}
 
+	// genesisenterprisedev fork: match the client tools' encoding to the server's, so SQL_ASCII and
+	// LATIN1 databases dump without encoding-conversion failures.
+	s.DetectServerEncoding(ctx, spec.Logger)
+
 	credentials, err := s.writeCredentialFiles()
 	if err != nil {
 		return fmt.Errorf("failed to create credential files: %w", err)

@@ -46,10 +46,18 @@ func (s *Source) runClientTool(ctx context.Context, run clientToolRun) error {
 // buildClientToolEnv passes the password through the .pgpass file and the certificates through the
 // libpq variables, so neither appears in the tool's arguments.
 func (s *Source) buildClientToolEnv(credentials *pgshared.CredentialTempFiles) []string {
+	// genesisenterprisedev fork: speak the server's encoding, not a fixed UTF8. The cache is
+	// populated by DetectServerEncoding before a dump; without it the fallback keeps the old
+	// behavior for callers that never detected the encoding.
+	clientEncoding := s.serverEncoding
+	if clientEncoding == "" {
+		clientEncoding = "UTF8"
+	}
+
 	env := []string{"PGPASSFILE=" + credentials.PgpassPath}
 	env = append(env, pgshared.GetPgHostAddrEnv(s.settings.HostAddr)...)
 	env = append(env,
-		"PGCLIENTENCODING=UTF8",
+		"PGCLIENTENCODING="+clientEncoding,
 		"PGCONNECT_TIMEOUT="+strconv.Itoa(clientConnectTimeoutSeconds),
 		"LC_ALL=C.UTF-8",
 		"LANG=C.UTF-8",
